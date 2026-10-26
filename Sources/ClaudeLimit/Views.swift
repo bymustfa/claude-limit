@@ -13,6 +13,7 @@ struct PanelView: View {
     @State private var appeared = false
     @State private var visible = false
     @State private var hovered: Int?
+    @State private var mouse = CGPoint.zero
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -154,7 +155,14 @@ struct PanelView: View {
                                 .foregroundStyle(d.isToday ? .primary : .secondary)
                         }
                         .frame(maxWidth: .infinity)
-                        .opacity(d.isFuture ? 0.45 : 1)
+                        .background {
+                            if hovered == d.index {
+                                Capsule().fill(liquidColor(d.allowance > 0.05 ? used / d.allowance : 1).opacity(0.45))
+                                    .padding(.vertical, 14).blur(radius: 14)
+                            }
+                        }
+                        .scaleEffect(hovered == d.index ? 1.05 : 1)
+                        .opacity((d.isFuture ? 0.45 : 1) * (hovered != nil && hovered != d.index ? 0.55 : 1))
                         .contentShape(Rectangle())
                         .onHover { inside in
                             if inside { hovered = d.index } else if hovered == d.index { hovered = nil }
@@ -181,7 +189,11 @@ struct PanelView: View {
             .frame(width: 58)
         }
         .padding(.bottom, 4)
-        .overlay(alignment: .top) {
+        .coordinateSpace(name: "bars")
+        .onContinuousHover(coordinateSpace: .named("bars")) { phase in
+            if case .active(let p) = phase { mouse = p }
+        }
+        .overlay(alignment: .topLeading) {
             // Own hover card: the system .help tooltip never shows under the 30 fps TimelineView.
             if let i = hovered, let d = w.days.first(where: { $0.index == i }) {
                 Text(tip(d))
@@ -190,12 +202,13 @@ struct PanelView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                     .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.primary.opacity(0.15)))
                     .shadow(radius: 8)
-                    .offset(y: -78)
+                    .fixedSize()
+                    .offset(x: min(mouse.x + 14, 110), y: mouse.y + 18)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.12), value: hovered)
+        .animation(.easeOut(duration: 0.15), value: hovered)
         .onAppear {
             visible = true
             withAnimation(.spring(duration: 1.0, bounce: 0.25)) { appeared = true }
