@@ -42,12 +42,12 @@ public enum WeekModel {
     static let day: TimeInterval = 86_400
     static let week: TimeInterval = 7 * day
 
-    /// Builds the 7 equal 24h slices of the current weekly window.
+    /// Builds the 7 day slices of the current weekly window.
     ///
-    /// The week runs from `resets_at - 7d` to `resets_at`. Usage before the first
-    /// snapshot of a week is counted as 0, so the day of the first observation
-    /// takes any usage that happened before tracking started.
-    public static func summary(snapshots: [Snapshot], now: Date) -> WeekSummary {
+    /// The week runs from `resets_at - 7d` to `resets_at`; days change at local midnight
+    /// (see `boundaries`). Usage before the first snapshot of a week is counted as 0, so
+    /// the day of the first observation takes any usage that happened before tracking started.
+    public static func summary(snapshots: [Snapshot], now: Date, calendar: Calendar = .current) -> WeekSummary {
         let nowT = now.timeIntervalSince1970
         let latest = snapshots.last(where: { $0.sevenDay != nil })
 
@@ -74,13 +74,14 @@ public enum WeekModel {
             inWeek.last(where: { $0.t <= time })?.sevenDay?.pct ?? 0
         }
 
-        let todayIndex = min(max(Int((nowT - weekStart) / day), 0), 6)
+        let b = boundaries(weekStart: weekStart, weekEnd: weekEnd, calendar: calendar)
+        let todayIndex = min(b.lastIndex(where: { $0 <= nowT }) ?? 0, 6)
         // Pool split: day i may use (100 - used before day i) / (7 - i); future days share what is left after today.
         let nowPct = pct(at: nowT)
         let projected = max(0, 100 - nowPct) / Double(6 - todayIndex == 0 ? 1 : 6 - todayIndex)
         let days = (0..<7).map { i -> DayUsage in
-            let s = weekStart + Double(i) * day
-            let e = s + day
+            let s = b[i]
+            let e = b[i + 1]
             let used: Double? = i > todayIndex ? nil : max(0, pct(at: min(e, nowT)) - pct(at: s))
             let allowance = i > todayIndex ? projected : max(0, 100 - pct(at: s)) / Double(7 - i)
             return DayUsage(index: i, start: Date(timeIntervalSince1970: s), end: Date(timeIntervalSince1970: e),
@@ -96,6 +97,21 @@ public enum WeekModel {
             fiveHour: rolledOver ? nil : latest.fiveHour.flatMap { $0.resetsAt > nowT ? $0 : nil },
             hasData: true
         )
+    }
+
+    /// The 8 edges of the week's days: the reset, six local midnights, the next reset.
+    /// The reset rarely falls on midnight, so day 0 starts at the reset and is named after the
+    /// nearest midnight; the first and last days absorb the difference (e.g. a Sat 23:00 reset
+    /// gives a 25h Sunday and a 23h Saturday).
+    static func boundaries(weekStart: TimeInterval, weekEnd: TimeInterval, calendar: Calendar) -> [TimeInterval] {
+        let start = Date(timeIntervalSince1970: weekStart)
+        let midnight = calendar.startOfDay(for: start)
+        let nextMidnight = calendar.date(byAdding: .day, value: 1, to: midnight) ?? midnight.addingTimeInterval(day)
+        let first = start.timeIntervalSince(midnight) < nextMidnight.timeIntervalSince(start) ? midnight : nextMidnight
+        let middle = (1...6).map { i in
+            (calendar.date(byAdding: .day, value: i, to: first) ?? first.addingTimeInterval(Double(i) * day)).timeIntervalSince1970
+        }
+        return [weekStart] + middle + [weekEnd]
     }
 
     private static func empty(weekEnd: TimeInterval, nowT: TimeInterval, hasData: Bool) -> WeekSummary {

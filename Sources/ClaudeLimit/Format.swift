@@ -26,7 +26,7 @@ enum Fmt {
 
     static func pct(_ v: Double) -> String { "%" + (number.string(from: v as NSNumber) ?? "\(v)") }
 
-    /// A slice runs from the reset time to the next 24h, so the weekday of its midpoint names it.
+    /// Slices start at local midnight, or within 12h of it for the first one, so 12h in names the day.
     static func dayName(_ d: DayUsage) -> String {
         weekday.string(from: d.start.addingTimeInterval(43_200))
     }
