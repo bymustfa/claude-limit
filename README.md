@@ -9,6 +9,8 @@ Claude's weekly limit resets once a week. It is easy to burn most of it in two b
 stuck for the rest of the week. ClaudeLimit turns the weekly percentage into a daily budget so you
 can see at a glance whether today you are ahead or behind.
 
+<p align="center"><img src="docs/screenshot-en.png" alt="ClaudeLimit panel" width="420"></p>
+
 ## Features
 
 - Menu bar text like `12 / 14`: percent used today / today's share.
