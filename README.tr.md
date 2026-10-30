@@ -9,6 +9,8 @@ Claude'un haftalık limiti haftada bir sıfırlanır. Yoğun iki günde limitin 
 geri kalanında takılı kalmak çok kolay. ClaudeLimit haftalık yüzdeyi günlük bir bütçeye çevirir;
 bugün önde mi geride mi olduğunu tek bakışta görürsün.
 
+<p align="center"><img src="docs/screenshot-tr.png" alt="ClaudeLimit paneli" width="420"></p>
+
 ## Özellikler
 
 - Menü çubuğunda `12 / 14` gibi bir yazı: bugün kullanılan yüzde / bugünkü pay.
