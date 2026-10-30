@@ -2,6 +2,8 @@
 
 [English](README.md) · **Türkçe**
 
+[![CI](https://github.com/bymustfa/claude-limit/actions/workflows/ci.yml/badge.svg)](https://github.com/bymustfa/claude-limit/actions/workflows/ci.yml)
+
 **Claude Code** haftalık limitinin ne kadarını kullandığını gösteren, haftalık limiti günlere adil
 bir pay olarak bölen küçük bir macOS menü çubuğu uygulaması.
 

@@ -2,6 +2,8 @@
 
 **English** · [Türkçe](README.tr.md)
 
+[![CI](https://github.com/bymustfa/claude-limit/actions/workflows/ci.yml/badge.svg)](https://github.com/bymustfa/claude-limit/actions/workflows/ci.yml)
+
 A small macOS menu bar app that shows how much of your weekly **Claude Code** limit you have used,
 split into a fair share per day.
 
