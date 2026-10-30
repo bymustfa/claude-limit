@@ -16,11 +16,11 @@ final class UsageParserTests: XCTestCase {
 
     func testParsesWeekAndSession() throws {
         let snap = try XCTUnwrap(UsageParser.parse(sample, now: now))
-        XCTAssertEqual(snap.sevenDay?.pct, 6)
+        XCTAssertEqual(snap.sevenDay?.percent, 6)
         XCTAssertEqual(snap.sevenDay?.resetsAt, 1_793_476_800) // Oct 31 23:00 Istanbul (UTC+3)
-        XCTAssertEqual(snap.fiveHour?.pct, 1)
+        XCTAssertEqual(snap.fiveHour?.percent, 1)
         XCTAssertEqual(snap.fiveHour?.resetsAt, 1_793_014_800) // Oct 26 14:40 Istanbul
-        XCTAssertEqual(snap.t, now.timeIntervalSince1970)
+        XCTAssertEqual(snap.timestamp, now.timeIntervalSince1970)
     }
 
     func testReturnsNilWithoutWeek() {
@@ -31,7 +31,7 @@ final class UsageParserTests: XCTestCase {
         let text = "Current week (all models): 10% used · resets Oct 31 at 11pm (Europe/Istanbul)"
         let snap = try XCTUnwrap(UsageParser.parse(text, now: now))
         XCTAssertNil(snap.fiveHour)
-        XCTAssertEqual(snap.sevenDay?.pct, 10)
+        XCTAssertEqual(snap.sevenDay?.percent, 10)
     }
 
     func testYearRollover() throws {
