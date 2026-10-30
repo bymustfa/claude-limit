@@ -3,78 +3,109 @@ import ClaudeLimitCore
 
 enum PollError: Error, Equatable {
     case claudeNotFound
-    case failed(String)
     case unparsable
     case timeout
+    case launchFailed
 
     var message: String {
         switch self {
-        case .claudeNotFound: return "claude bulunamadı"
-        case .failed(let s): return s.isEmpty ? "claude çalışmadı" : "claude: \(s)"
-        case .unparsable: return "Çıktı okunamadı (giriş yapılmış mı?)"
-        case .timeout: return "claude zaman aşımına uğradı"
+        case .claudeNotFound: return String(localized: "claude not found")
+        case .unparsable: return String(localized: "Could not read the output (are you signed in?)")
+        case .timeout: return String(localized: "claude timed out")
+        case .launchFailed: return String(localized: "claude could not be started")
         }
     }
 }
 
+/// Source of fresh usage numbers; lets the store be tested without spawning `claude`.
+protocol UsageFetching: Sendable {
+    func fetch() async -> Result<Snapshot, PollError>
+}
+
 /// Runs `claude -p "/usage"` and parses the account-wide limits from its output.
-enum UsagePoller {
-    static func fetch() async -> Result<Snapshot, PollError> {
-        await withCheckedContinuation { cont in
+final class ClaudeCLIUsageFetcher: UsageFetching, @unchecked Sendable {
+    private static let fetchTimeout: TimeInterval = 60
+    private static let lookupTimeout: TimeInterval = 10
+
+    private let lock = NSLock()
+    private var cachedPath: String?
+
+    func fetch() async -> Result<Snapshot, PollError> {
+        await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .utility).async {
-                cont.resume(returning: run())
+                continuation.resume(returning: self.run())
             }
         }
     }
 
-    private static func claudePath() -> String? {
-        let fm = FileManager.default
-        let home = fm.homeDirectoryForCurrentUser.path
+    /// Resolves the `claude` executable once; a failed lookup is retried on the next poll.
+    private func claudePath() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        if let cachedPath, FileManager.default.isExecutableFile(atPath: cachedPath) { return cachedPath }
+        cachedPath = Self.resolveClaudePath()
+        return cachedPath
+    }
+
+    private static func resolveClaudePath() -> String? {
+        let fileManager = FileManager.default
+        let home = fileManager.homeDirectoryForCurrentUser.path
         let candidates = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude",
                           "\(home)/.local/bin/claude", "\(home)/.claude/local/claude"]
-        if let hit = candidates.first(where: { fm.isExecutableFile(atPath: $0) }) { return hit }
+        if let hit = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) { return hit }
         // GUI apps have a minimal PATH; ask a login shell.
-        let out = shell("/bin/zsh", ["-lc", "command -v claude"], timeout: 10)
-        guard let path = out?.split(whereSeparator: \.isNewline).last.map(String.init),
-              fm.isExecutableFile(atPath: path) else { return nil }
+        let output = try? runProcess("/bin/zsh", ["-lc", "command -v claude"], timeout: lookupTimeout).get()
+        guard let path = output?.split(whereSeparator: \.isNewline).last.map(String.init),
+              fileManager.isExecutableFile(atPath: path) else { return nil }
         return path
     }
 
-    private static func run() -> Result<Snapshot, PollError> {
+    private func run() -> Result<Snapshot, PollError> {
         guard let claude = claudePath() else { return .failure(.claudeNotFound) }
-        guard let out = shell(claude, ["-p", "/usage"], timeout: 60) else { return .failure(.timeout) }
-        guard let snap = UsageParser.parse(out, now: Date()) else { return .failure(.unparsable) }
-        return .success(snap)
+        let output: String
+        switch Self.runProcess(claude, ["-p", "/usage"], timeout: Self.fetchTimeout) {
+        case .success(let text): output = text
+        case .failure(let error): return .failure(error)
+        }
+        guard let snapshot = UsageParser.parse(output, now: Date()) else { return .failure(.unparsable) }
+        return .success(snapshot)
     }
 
-    /// Returns stdout, or nil on timeout / launch failure.
-    private static func shell(_ exe: String, _ args: [String], timeout: TimeInterval) -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = args
-        var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
-        p.environment = env
+    /// Collects the child's stdout from a background thread; the lock makes the hand-over safe.
+    private final class OutputBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        func set(_ newData: Data) { lock.lock(); data = newData; lock.unlock() }
+        func get() -> Data { lock.lock(); defer { lock.unlock() }; return data }
+    }
+
+    /// Returns stdout, or why it could not be collected.
+    private static func runProcess(_ executable: String, _ arguments: [String],
+                                   timeout: TimeInterval) -> Result<String, PollError> {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (environment["PATH"] ?? "")
+        process.environment = environment
         let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        p.standardInput = FileHandle.nullDevice
-        let done = DispatchSemaphore(value: 0)
-        p.terminationHandler = { _ in done.signal() }
-        do { try p.run() } catch { return nil }
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        do { try process.run() } catch { return .failure(.launchFailed) }
         // Drain stdout concurrently so a full pipe can't block the child.
-        var data = Data()
-        let reader = DispatchQueue(label: "usage.read")
-        let readDone = DispatchSemaphore(value: 0)
-        reader.async {
-            data = pipe.fileHandleForReading.readDataToEndOfFile()
-            readDone.signal()
+        let output = OutputBox()
+        let readFinished = DispatchSemaphore(value: 0)
+        DispatchQueue(label: "usage.read").async {
+            output.set(pipe.fileHandleForReading.readDataToEndOfFile())
+            readFinished.signal()
         }
-        if done.wait(timeout: .now() + timeout) == .timedOut {
-            p.terminate()
-            return nil
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            return .failure(.timeout)
         }
-        readDone.wait()
-        return String(data: data, encoding: .utf8)
+        readFinished.wait()
+        return .success(String(decoding: output.get(), as: UTF8.self))
     }
 }

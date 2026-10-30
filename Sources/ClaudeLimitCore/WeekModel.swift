@@ -16,19 +16,30 @@ public struct DayUsage: Equatable, Sendable {
     public var isFuture: Bool { used == nil }
     /// Carried over from earlier days (positive) or borrowed by them (negative), vs. the fixed share.
     public var carry: Double { allowance - WeekSummary.dailyShare }
+    /// Whether the carry is large enough to be worth showing.
+    public var hasCarry: Bool { abs(carry) >= WeekSummary.negligible }
     /// The day's allowance is spent (also true once the whole weekly pool is gone).
     public var isFull: Bool {
         guard let used else { return false }
-        return allowance <= 0.05 || used >= allowance
+        return allowance <= WeekSummary.negligible || used >= allowance
     }
+    /// Used share of the allowance; 1 when there is no allowance left.
+    public var fillRatio: Double {
+        allowance > WeekSummary.negligible ? (used ?? 0) / allowance : 1
+    }
+    /// A date that falls inside the calendar day this slice is named after. Slices start at local
+    /// midnight, or within 12h of it for the first one, so 12h in names the day.
+    public var labelDate: Date { start.addingTimeInterval(WeekModel.labelOffset) }
 }
 
 public struct WeekSummary: Equatable, Sendable {
     public static let dailyShare = 100.0 / 7.0
+    /// Percentage points below which an amount counts as zero.
+    public static let negligible = 0.05
 
     public let weekStart: Date
     public let weekEnd: Date
-    public let weeklyPct: Double
+    public let weeklyPercent: Double
     public let days: [DayUsage]
     public let fiveHour: LimitWindow?
     public let hasData: Bool
@@ -41,6 +52,9 @@ public struct WeekSummary: Equatable, Sendable {
 public enum WeekModel {
     static let day: TimeInterval = 86_400
     static let week: TimeInterval = 7 * day
+    /// Snapshots whose reset time differs from the week's by more than this belong to another week.
+    static let resetTolerance: TimeInterval = 3600
+    static let labelOffset: TimeInterval = 12 * 3600
 
     /// Builds the 7 day slices of the current weekly window.
     ///
@@ -48,53 +62,54 @@ public enum WeekModel {
     /// (see `boundaries`). Usage before the first snapshot of a week is counted as 0, so
     /// the day of the first observation takes any usage that happened before tracking started.
     public static func summary(snapshots: [Snapshot], now: Date, calendar: Calendar = .current) -> WeekSummary {
-        let nowT = now.timeIntervalSince1970
+        let nowTime = now.timeIntervalSince1970
         let latest = snapshots.last(where: { $0.sevenDay != nil })
 
-        guard let latest, let seven = latest.sevenDay else {
+        guard let latest, let latestWeek = latest.sevenDay else {
             // No data at all: show an empty week ending a week from now.
-            return empty(weekEnd: nowT + week, nowT: nowT, hasData: false)
+            return empty(weekEnd: nowTime + week)
         }
 
-        var weekEnd = seven.resetsAt
+        var weekEnd = latestWeek.resetsAt
         var rolledOver = false
         // The known week is over and no new data arrived: the limit has reset.
-        while weekEnd <= nowT {
+        while weekEnd <= nowTime {
             weekEnd += week
             rolledOver = true
         }
         let weekStart = weekEnd - week
 
-        let inWeek = rolledOver ? [] : snapshots.filter { snap in
-            guard let w = snap.sevenDay else { return false }
-            return snap.t >= weekStart && snap.t < weekEnd && abs(w.resetsAt - weekEnd) < 3600
+        let inWeek = rolledOver ? [] : snapshots.filter { snapshot in
+            guard let window = snapshot.sevenDay else { return false }
+            return snapshot.timestamp >= weekStart && snapshot.timestamp < weekEnd
+                && abs(window.resetsAt - weekEnd) < resetTolerance
         }
 
-        func pct(at time: TimeInterval) -> Double {
-            inWeek.last(where: { $0.t <= time })?.sevenDay?.pct ?? 0
+        func percent(at time: TimeInterval) -> Double {
+            inWeek.last(where: { $0.timestamp <= time })?.sevenDay?.percent ?? 0
         }
 
-        let b = boundaries(weekStart: weekStart, weekEnd: weekEnd, calendar: calendar)
-        let todayIndex = min(b.lastIndex(where: { $0 <= nowT }) ?? 0, 6)
+        let edges = boundaries(weekStart: weekStart, weekEnd: weekEnd, calendar: calendar)
+        let todayIndex = min(edges.lastIndex(where: { $0 <= nowTime }) ?? 0, 6)
         // Pool split: day i may use (100 - used before day i) / (7 - i); future days share what is left after today.
-        let nowPct = pct(at: nowT)
-        let projected = max(0, 100 - nowPct) / Double(6 - todayIndex == 0 ? 1 : 6 - todayIndex)
-        let days = (0..<7).map { i -> DayUsage in
-            let s = b[i]
-            let e = b[i + 1]
-            let used: Double? = i > todayIndex ? nil : max(0, pct(at: min(e, nowT)) - pct(at: s))
-            let allowance = i > todayIndex ? projected : max(0, 100 - pct(at: s)) / Double(7 - i)
-            return DayUsage(index: i, start: Date(timeIntervalSince1970: s), end: Date(timeIntervalSince1970: e),
-                            used: used, isToday: i == todayIndex, allowance: allowance,
-                            weekTotal: i > todayIndex ? nil : pct(at: min(e, nowT)))
+        let nowPercent = percent(at: nowTime)
+        let projected = max(0, 100 - nowPercent) / Double(max(1, 6 - todayIndex))
+        let days = (0..<7).map { index -> DayUsage in
+            let dayStart = edges[index]
+            let dayEnd = edges[index + 1]
+            let used: Double? = index > todayIndex ? nil : max(0, percent(at: min(dayEnd, nowTime)) - percent(at: dayStart))
+            let allowance = index > todayIndex ? projected : max(0, 100 - percent(at: dayStart)) / Double(7 - index)
+            return DayUsage(index: index, start: Date(timeIntervalSince1970: dayStart), end: Date(timeIntervalSince1970: dayEnd),
+                            used: used, isToday: index == todayIndex, allowance: allowance,
+                            weekTotal: index > todayIndex ? nil : percent(at: min(dayEnd, nowTime)))
         }
 
         return WeekSummary(
             weekStart: Date(timeIntervalSince1970: weekStart),
             weekEnd: Date(timeIntervalSince1970: weekEnd),
-            weeklyPct: nowPct,
+            weeklyPercent: nowPercent,
             days: days,
-            fiveHour: rolledOver ? nil : latest.fiveHour.flatMap { $0.resetsAt > nowT ? $0 : nil },
+            fiveHour: rolledOver ? nil : latest.fiveHour.flatMap { $0.resetsAt > nowTime ? $0 : nil },
             hasData: true
         )
     }
@@ -108,20 +123,20 @@ public enum WeekModel {
         let midnight = calendar.startOfDay(for: start)
         let nextMidnight = calendar.date(byAdding: .day, value: 1, to: midnight) ?? midnight.addingTimeInterval(day)
         let first = start.timeIntervalSince(midnight) < nextMidnight.timeIntervalSince(start) ? midnight : nextMidnight
-        let middle = (1...6).map { i in
-            (calendar.date(byAdding: .day, value: i, to: first) ?? first.addingTimeInterval(Double(i) * day)).timeIntervalSince1970
+        let middle = (1...6).map { offset in
+            (calendar.date(byAdding: .day, value: offset, to: first) ?? first.addingTimeInterval(Double(offset) * day)).timeIntervalSince1970
         }
         return [weekStart] + middle + [weekEnd]
     }
 
-    private static func empty(weekEnd: TimeInterval, nowT: TimeInterval, hasData: Bool) -> WeekSummary {
+    private static func empty(weekEnd: TimeInterval) -> WeekSummary {
         let weekStart = weekEnd - week
-        let days = (0..<7).map { i -> DayUsage in
-            let s = weekStart + Double(i) * day
-            return DayUsage(index: i, start: Date(timeIntervalSince1970: s), end: Date(timeIntervalSince1970: s + day),
-                            used: i == 6 ? 0 : nil, isToday: i == 6, allowance: WeekSummary.dailyShare)
+        let days = (0..<7).map { index -> DayUsage in
+            let dayStart = weekStart + Double(index) * day
+            return DayUsage(index: index, start: Date(timeIntervalSince1970: dayStart), end: Date(timeIntervalSince1970: dayStart + day),
+                            used: index == 6 ? 0 : nil, isToday: index == 6, allowance: WeekSummary.dailyShare)
         }
         return WeekSummary(weekStart: Date(timeIntervalSince1970: weekStart), weekEnd: Date(timeIntervalSince1970: weekEnd),
-                           weeklyPct: 0, days: days, fiveHour: nil, hasData: hasData)
+                           weeklyPercent: 0, days: days, fiveHour: nil, hasData: false)
     }
 }

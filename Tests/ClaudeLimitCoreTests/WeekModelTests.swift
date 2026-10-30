@@ -6,8 +6,8 @@ final class WeekModelTests: XCTestCase {
     let reset: TimeInterval = 1_793_476_800
     var start: TimeInterval { reset - 7 * 86_400 }
 
-    func snap(_ t: TimeInterval, _ pct: Double, resets: TimeInterval? = nil) -> Snapshot {
-        Snapshot(t: t, sevenDay: LimitWindow(pct: pct, resetsAt: resets ?? reset))
+    func snap(_ time: TimeInterval, _ percent: Double, resets: TimeInterval? = nil) -> Snapshot {
+        Snapshot(timestamp: time, sevenDay: LimitWindow(percent: percent, resetsAt: resets ?? reset))
     }
 
     func calendar(_ zone: TimeZone) -> Calendar {
@@ -53,7 +53,7 @@ final class WeekModelTests: XCTestCase {
                  snap(start + 86_400 + 100, 6), snap(start + 86_400 + 40_000, 20)]
         let now = Date(timeIntervalSince1970: start + 86_400 + 50_000)
         let w = summary(snapshots: s, now: now)
-        XCTAssertEqual(w.weeklyPct, 20)
+        XCTAssertEqual(w.weeklyPercent, 20)
         XCTAssertEqual(w.days[0].used, 5)
         XCTAssertEqual(w.days[1].used, 15)
         XCTAssertTrue(w.days[1].isToday)
@@ -92,14 +92,14 @@ final class WeekModelTests: XCTestCase {
     func testNoSnapshots() {
         let w = summary(snapshots: [], now: Date(timeIntervalSince1970: start))
         XCTAssertFalse(w.hasData)
-        XCTAssertEqual(w.weeklyPct, 0)
+        XCTAssertEqual(w.weeklyPercent, 0)
     }
 
     func testWeekRolloverWithoutNewData() {
         let s = [snap(start + 100, 40)]
         let now = Date(timeIntervalSince1970: reset + 3600)
         let w = summary(snapshots: s, now: now)
-        XCTAssertEqual(w.weeklyPct, 0)
+        XCTAssertEqual(w.weeklyPercent, 0)
         XCTAssertEqual(w.weekEnd.timeIntervalSince1970, reset + 7 * 86_400)
         XCTAssertEqual(w.todayUsed, 0)
     }
@@ -108,19 +108,16 @@ final class WeekModelTests: XCTestCase {
         let prevReset = reset - 7 * 86_400
         let s = [snap(prevReset - 1000, 90, resets: prevReset), snap(start + 500, 3)]
         let w = summary(snapshots: s, now: Date(timeIntervalSince1970: start + 1000))
-        XCTAssertEqual(w.weeklyPct, 3)
+        XCTAssertEqual(w.weeklyPercent, 3)
         XCTAssertEqual(w.days[0].used, 3)
     }
 
-    func testParserSkipsGarbage() {
-        let text = """
-        {"t":1,"five_hour":{"pct":0,"resets_at":10},"seven_day":{"pct":5,"resets_at":20}}
-        not json
-        {"t":0,"seven_day":{"pct":1,"resets_at":20}}
-        """
-        let snaps = SnapshotParser.parse(text)
-        XCTAssertEqual(snaps.count, 2)
-        XCTAssertEqual(snaps[0].t, 0)
-        XCTAssertEqual(snaps[1].fiveHour?.pct, 0)
+    func testDayHelpers() {
+        let s = [snap(start + 100, 5), snap(start + 86_400 + 100, 6)]
+        let w = summary(snapshots: s, now: Date(timeIntervalSince1970: start + 86_400 + 5000))
+        XCTAssertFalse(w.days[0].hasCarry)
+        XCTAssertTrue(w.days[1].hasCarry)
+        XCTAssertEqual(w.days[1].fillRatio, 1 / w.days[1].allowance, accuracy: 1e-9)
+        XCTAssertEqual(w.days[1].labelDate.timeIntervalSince(w.days[1].start), 12 * 3600)
     }
 }

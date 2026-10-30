@@ -8,7 +8,7 @@ struct ClaudeLimitApp: App {
         MenuBarExtra {
             PanelView(store: store)
         } label: {
-            Text(Fmt.menubar(store.summary)).monospacedDigit()
+            Text(Formatters.menuBar(store.summary)).monospacedDigit()
         }
         .menuBarExtraStyle(.window)
     }
