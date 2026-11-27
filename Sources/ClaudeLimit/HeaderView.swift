@@ -9,6 +9,23 @@ struct HeaderView: View {
     private static let nearThreshold = 0.7
 
     var body: some View {
+        if summary.isPast { weekTotalBody } else { todayBody }
+    }
+
+    /// A finished week: the total it ended on.
+    private var weekTotalBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Week total").font(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(verbatim: "≈\(Formatters.percent(summary.weeklyPercent))")
+                    .font(.system(size: 30, weight: .bold)).monospacedDigit()
+                Text(verbatim: "/ \(Formatters.percent(100))").font(.title3).foregroundStyle(.secondary).monospacedDigit()
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder private var todayBody: some View {
         let today = summary.today
         let share = today.allowance
         let used = summary.todayUsed

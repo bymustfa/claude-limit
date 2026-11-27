@@ -17,7 +17,7 @@ struct FooterView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
-        let summary = store.summary
+        let summary = store.viewed
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
                 Text(weekLine(summary)).font(.caption)
@@ -43,7 +43,10 @@ struct FooterView: View {
     }
 
     private func weekLine(_ summary: WeekSummary) -> String {
-        String(localized: "Week ≈\(Formatters.percent(summary.weeklyPercent)) · resets \(Formatters.resetText(summary.weekEnd)) (\(Formatters.countdown(to: summary.weekEnd, from: store.now)))")
+        if summary.isPast {
+            return String(localized: "Week ≈\(Formatters.percent(summary.weeklyPercent)) · ended \(Formatters.resetText(summary.weekEnd))")
+        }
+        return String(localized: "Week ≈\(Formatters.percent(summary.weeklyPercent)) · resets \(Formatters.resetText(summary.weekEnd)) (\(Formatters.countdown(to: summary.weekEnd, from: store.now)))")
     }
 
     private var pollStatus: String {

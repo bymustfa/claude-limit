@@ -29,6 +29,13 @@ enum Formatters {
     private static let percentWhole = percentFormatter(fractionDigits: 0)
     private static let weekday = dateFormatter(template: "EEE")
     private static let longDay = dateFormatter(template: "dMMMMEEEE")
+    private static let weekRangeFormatter: DateIntervalFormatter = {
+        let formatter = DateIntervalFormatter()
+        formatter.locale = locale
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateTemplate = "dMMM"
+        return formatter
+    }()
     private static let resetDay = dateFormatter(template: "EEEHHmm")
 
     /// Percentage points with up to one decimal, e.g. "1.8%" (en) / "%1,8" (tr).
@@ -46,6 +53,12 @@ enum Formatters {
 
     /// Full date of the day a slice is named after, e.g. "25 October Sunday".
     static func dayLong(_ day: DayUsage) -> String { longDay.string(from: day.labelDate) }
+
+    /// First to last day of a week, e.g. "Oct 25 – 31" (en) / "25–31 Eki" (tr).
+    static func weekRange(_ summary: WeekSummary) -> String {
+        guard let first = summary.days.first, let last = summary.days.last else { return "" }
+        return weekRangeFormatter.string(from: first.labelDate, to: last.labelDate)
+    }
 
     /// Weekday and time of a reset, e.g. "Sat 23:00".
     static func resetText(_ date: Date) -> String { resetDay.string(from: date) }

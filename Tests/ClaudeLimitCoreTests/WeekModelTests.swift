@@ -120,4 +120,30 @@ final class WeekModelTests: XCTestCase {
         XCTAssertEqual(w.days[1].fillRatio, 1 / w.days[1].allowance, accuracy: 1e-9)
         XCTAssertEqual(w.days[1].labelDate.timeIntervalSince(w.days[1].start), 12 * 3600)
     }
+
+    func testPastWeekHasNoTodayAndFullDays() {
+        let s = [snap(start + 100, 5), snap(start + 86_400 + 100, 6), snap(start + 6 * 86_400 + 100, 40)]
+        let w = WeekModel.pastWeek(snapshots: s, weekEnd: reset, calendar: calendar(TimeZone(secondsFromGMT: 4 * 3600)!))
+        XCTAssertTrue(w.isPast)
+        XCTAssertFalse(w.days.contains(where: \.isToday))
+        XCTAssertFalse(w.days.contains(where: \.isFuture))
+        XCTAssertEqual(w.weeklyPercent, 40)
+        XCTAssertEqual(w.days[0].used, 5)
+        XCTAssertEqual(w.days[6].used, 34)
+    }
+
+    func testPastWeekIgnoresOtherWeeks() {
+        let nextReset = reset + 7 * 86_400
+        let s = [snap(start + 100, 5), snap(reset + 100, 90, resets: nextReset)]
+        let w = WeekModel.pastWeek(snapshots: s, weekEnd: reset)
+        XCTAssertEqual(w.weeklyPercent, 5)
+    }
+
+    func testPastWeekEnds() {
+        let week = 7.0 * 86_400
+        // Two readings of the same reset a few minutes apart count once; the current week is left out.
+        let resets = [reset - week, reset - week + 300, reset, reset + week]
+        let ends = WeekModel.pastWeekEnds(resets: resets, currentStart: Date(timeIntervalSince1970: reset))
+        XCTAssertEqual(ends, [reset - week, reset])
+    }
 }

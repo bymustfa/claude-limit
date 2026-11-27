@@ -49,13 +49,26 @@ public final class SampleDatabase {
         sqlite3_step(statement)
     }
 
-    /// Samples taken at or after `since`, oldest first.
-    public func load(since: TimeInterval = 0) -> [Snapshot] {
+    /// Distinct weekly reset times ever recorded, oldest first. Near-duplicates are not merged here;
+    /// see `WeekModel.pastWeekEnds`.
+    public func weekResets() -> [TimeInterval] {
         var statement: OpaquePointer?
-        let sql = "SELECT t, five_pct, five_resets, week_pct, week_resets FROM samples WHERE t >= ? ORDER BY t"
+        let sql = "SELECT DISTINCT week_resets FROM samples WHERE week_resets IS NOT NULL ORDER BY week_resets"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+        var resets: [TimeInterval] = []
+        while sqlite3_step(statement) == SQLITE_ROW { resets.append(sqlite3_column_double(statement, 0)) }
+        return resets
+    }
+
+    /// Samples taken in `since ..< until`, oldest first.
+    public func load(since: TimeInterval = 0, until: TimeInterval = .greatestFiniteMagnitude) -> [Snapshot] {
+        var statement: OpaquePointer?
+        let sql = "SELECT t, five_pct, five_resets, week_pct, week_resets FROM samples WHERE t >= ? AND t < ? ORDER BY t"
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_double(statement, 1, since)
+        sqlite3_bind_double(statement, 2, until)
         func window(percentColumn: Int32, resetsColumn: Int32) -> LimitWindow? {
             sqlite3_column_type(statement, percentColumn) == SQLITE_NULL ? nil
                 : LimitWindow(percent: sqlite3_column_double(statement, percentColumn),

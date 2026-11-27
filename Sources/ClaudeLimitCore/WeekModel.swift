@@ -43,6 +43,8 @@ public struct WeekSummary: Equatable, Sendable {
     public let days: [DayUsage]
     public let fiveHour: LimitWindow?
     public let hasData: Bool
+    /// A finished week: no day is "today" and no day is a projection.
+    public let isPast: Bool
 
     public var today: DayUsage { days.first(where: \.isToday) ?? days[0] }
     public var todayUsed: Double { today.used ?? 0 }
@@ -77,13 +79,44 @@ public enum WeekModel {
             weekEnd += week
             rolledOver = true
         }
-        let weekStart = weekEnd - week
 
-        let inWeek = rolledOver ? [] : snapshots.filter { snapshot in
+        let inWeek = rolledOver ? [] : samples(of: snapshots, weekEnd: weekEnd)
+        return build(inWeek: inWeek, weekEnd: weekEnd, nowTime: nowTime, isPast: false,
+                     fiveHour: rolledOver ? nil : latest.fiveHour.flatMap { $0.resetsAt > nowTime ? $0 : nil },
+                     calendar: calendar)
+    }
+
+    /// Builds the summary of a finished week that ended at `weekEnd` (one of `pastWeekEnds`).
+    /// Same slicing as `summary`, but every day is complete and none is "today".
+    public static func pastWeek(snapshots: [Snapshot], weekEnd: TimeInterval, calendar: Calendar = .current) -> WeekSummary {
+        return build(inWeek: samples(of: snapshots, weekEnd: weekEnd), weekEnd: weekEnd, nowTime: weekEnd, isPast: true, fiveHour: nil, calendar: calendar)
+    }
+
+    /// Ends of the finished weeks found in `resets` (the recorded reset times), oldest first.
+    /// Resets within `resetTolerance` of each other are one week; the current week, which starts
+    /// at `currentStart`, is left out.
+    public static func pastWeekEnds(resets: [TimeInterval], currentStart: Date) -> [TimeInterval] {
+        var ends: [TimeInterval] = []
+        for reset in resets.sorted() {
+            if let last = ends.last, reset - last < resetTolerance { continue }
+            ends.append(reset)
+        }
+        return ends.filter { $0 <= currentStart.timeIntervalSince1970 + resetTolerance }
+    }
+
+    /// The snapshots that belong to the week ending at `weekEnd`.
+    private static func samples(of snapshots: [Snapshot], weekEnd: TimeInterval) -> [Snapshot] {
+        let weekStart = weekEnd - week
+        return snapshots.filter { snapshot in
             guard let window = snapshot.sevenDay else { return false }
             return snapshot.timestamp >= weekStart && snapshot.timestamp < weekEnd
                 && abs(window.resetsAt - weekEnd) < resetTolerance
         }
+    }
+
+    private static func build(inWeek: [Snapshot], weekEnd: TimeInterval, nowTime: TimeInterval, isPast: Bool,
+                              fiveHour: LimitWindow?, calendar: Calendar) -> WeekSummary {
+        let weekStart = weekEnd - week
 
         func percent(at time: TimeInterval) -> Double {
             inWeek.last(where: { $0.timestamp <= time })?.sevenDay?.percent ?? 0
@@ -100,7 +133,7 @@ public enum WeekModel {
             let used: Double? = index > todayIndex ? nil : max(0, percent(at: min(dayEnd, nowTime)) - percent(at: dayStart))
             let allowance = index > todayIndex ? projected : max(0, 100 - percent(at: dayStart)) / Double(7 - index)
             return DayUsage(index: index, start: Date(timeIntervalSince1970: dayStart), end: Date(timeIntervalSince1970: dayEnd),
-                            used: used, isToday: index == todayIndex, allowance: allowance,
+                            used: used, isToday: !isPast && index == todayIndex, allowance: allowance,
                             weekTotal: index > todayIndex ? nil : percent(at: min(dayEnd, nowTime)))
         }
 
@@ -109,8 +142,9 @@ public enum WeekModel {
             weekEnd: Date(timeIntervalSince1970: weekEnd),
             weeklyPercent: nowPercent,
             days: days,
-            fiveHour: rolledOver ? nil : latest.fiveHour.flatMap { $0.resetsAt > nowTime ? $0 : nil },
-            hasData: true
+            fiveHour: fiveHour,
+            hasData: true,
+            isPast: isPast
         )
     }
 
@@ -137,6 +171,6 @@ public enum WeekModel {
                             used: index == 6 ? 0 : nil, isToday: index == 6, allowance: WeekSummary.dailyShare)
         }
         return WeekSummary(weekStart: Date(timeIntervalSince1970: weekStart), weekEnd: Date(timeIntervalSince1970: weekEnd),
-                           weeklyPercent: 0, days: days, fiveHour: nil, hasData: false)
+                           weeklyPercent: 0, days: days, fiveHour: nil, hasData: false, isPast: false)
     }
 }

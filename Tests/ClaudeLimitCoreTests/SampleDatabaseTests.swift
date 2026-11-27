@@ -17,5 +17,7 @@ final class SampleDatabaseTests: XCTestCase {
         XCTAssertEqual(all[0].fiveHour?.percent, 1)
         XCTAssertNil(all[1].fiveHour)
         XCTAssertEqual(db.load(since: 15).count, 1)
+        XCTAssertEqual(db.load(since: 0, until: 20).map(\.timestamp), [10])
+        XCTAssertEqual(db.weekResets(), [99])
     }
 }
