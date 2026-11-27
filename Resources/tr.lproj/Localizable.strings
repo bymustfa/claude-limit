@@ -41,3 +41,12 @@
 "%lldd" = "%lldg";
 "%lldh" = "%lldsa";
 "%lldm" = "%llddk";
+
+/* History view */
+"History" = "Geçmiş";
+"Back to week" = "Haftaya dön";
+"Last 7 days" = "Son 7 gün";
+"Last 30 days" = "Son 30 gün";
+"Total" = "Toplam";
+"Per day" = "Günlük ort.";
+"Busiest day" = "En yoğun gün";

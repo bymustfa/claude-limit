@@ -36,6 +36,7 @@ enum Formatters {
         formatter.dateTemplate = "dMMM"
         return formatter
     }()
+    private static let shortDay = dateFormatter(template: "dMMM")
     private static let resetDay = dateFormatter(template: "EEEHHmm")
 
     /// Percentage points with up to one decimal, e.g. "1.8%" (en) / "%1,8" (tr).
@@ -59,6 +60,9 @@ enum Formatters {
         guard let first = summary.days.first, let last = summary.days.last else { return "" }
         return weekRangeFormatter.string(from: first.labelDate, to: last.labelDate)
     }
+
+    /// Day and month, e.g. "Nov 21" (en) / "21 Kas" (tr).
+    static func shortDate(_ date: Date) -> String { shortDay.string(from: date) }
 
     /// Weekday and time of a reset, e.g. "Sat 23:00".
     static func resetText(_ date: Date) -> String { resetDay.string(from: date) }

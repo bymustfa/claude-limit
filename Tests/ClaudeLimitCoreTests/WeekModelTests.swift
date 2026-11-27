@@ -139,6 +139,31 @@ final class WeekModelTests: XCTestCase {
         XCTAssertEqual(w.weeklyPercent, 5)
     }
 
+    func testRangeUsageSpansWeeks() {
+        let week = 7.0 * 86_400
+        let zone = calendar(TimeZone(secondsFromGMT: 4 * 3600)!) // reset is local midnight at +04
+        let nextReset = reset + week
+        // Last day of week 1 goes 10 -> 30; first day of week 2 goes 0 -> 5.
+        let s = [snap(reset - 86_400 - 60, 10), snap(reset - 60, 30),
+                 snap(reset + 3600, 5, resets: nextReset)]
+        let now = Date(timeIntervalSince1970: reset + 7200)
+        let r = WeekModel.rangeUsage(snapshots: s, from: Date(timeIntervalSince1970: reset - 86_400 + 60),
+                                     to: now, now: now, calendar: zone)
+        XCTAssertEqual(r.days.count, 2)
+        XCTAssertEqual(r.days[0].used, 20, accuracy: 1e-9) // 10 -> 30
+        XCTAssertEqual(r.days[1].used, 5, accuracy: 1e-9)
+        XCTAssertEqual(r.total, 25, accuracy: 1e-9)
+        XCTAssertEqual(r.busiest?.used, 20)
+    }
+
+    func testRangeUsageSkipsFutureDaysAndEmptyHistory() {
+        let now = Date(timeIntervalSince1970: start + 100)
+        let r = WeekModel.rangeUsage(snapshots: [], from: now, to: now.addingTimeInterval(5 * 86_400), now: now)
+        XCTAssertEqual(r.days.count, 1)
+        XCTAssertEqual(r.total, 0)
+        XCTAssertNil(r.busiest)
+    }
+
     func testPastWeekEnds() {
         let week = 7.0 * 86_400
         // Two readings of the same reset a few minutes apart count once; the current week is left out.

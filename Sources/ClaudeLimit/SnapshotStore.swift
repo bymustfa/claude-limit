@@ -83,6 +83,15 @@ final class SnapshotStore: ObservableObject {
         reload()
     }
 
+    /// Daily usage between two dates (inclusive), read from the full history in the database.
+    func rangeUsage(from first: Date, to last: Date) -> RangeSummary {
+        // A week reaches 7 days past a day's samples, so pad both ends to catch the weeks involved.
+        let padding = 8 * 86_400.0
+        let samples = db?.load(since: first.timeIntervalSince1970 - padding,
+                               until: last.timeIntervalSince1970 + padding) ?? []
+        return WeekModel.rangeUsage(snapshots: samples, from: first, to: last, now: now)
+    }
+
     func reload() {
         now = Date()
         snapshots = db?.load(since: now.timeIntervalSince1970 - Self.historyWindow) ?? []

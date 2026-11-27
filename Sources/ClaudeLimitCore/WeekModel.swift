@@ -51,6 +51,23 @@ public struct WeekSummary: Equatable, Sendable {
     public func isOver(_ day: DayUsage) -> Bool { (day.used ?? 0) > day.allowance }
 }
 
+/// One calendar day of a date-range query.
+public struct RangeDay: Equatable, Sendable {
+    public let start: Date
+    /// Percentage points of the weekly limit used on this day.
+    public let used: Double
+}
+
+/// Usage over a span of days, possibly several weeks; see `WeekModel.rangeUsage`.
+public struct RangeSummary: Equatable, Sendable {
+    public let days: [RangeDay]
+
+    public var total: Double { days.reduce(0) { $0 + $1.used } }
+    public var average: Double { days.isEmpty ? 0 : total / Double(days.count) }
+    /// The day with the most usage; nil when nothing was used.
+    public var busiest: RangeDay? { days.max(by: { $0.used < $1.used }).flatMap { $0.used > 0 ? $0 : nil } }
+}
+
 public enum WeekModel {
     static let day: TimeInterval = 86_400
     static let week: TimeInterval = 7 * day
@@ -102,6 +119,35 @@ public enum WeekModel {
             ends.append(reset)
         }
         return ends.filter { $0 <= currentStart.timeIntervalSince1970 + resetTolerance }
+    }
+
+    /// Usage per local calendar day from `first` to `last` (both inclusive, any time of day), across
+    /// every week found in `snapshots`. A day that contains a reset adds up the end of one week
+    /// and the start of the next. Days after `now` are left out.
+    public static func rangeUsage(snapshots: [Snapshot], from first: Date, to last: Date,
+                                  now: Date = Date(), calendar: Calendar = .current) -> RangeSummary {
+        let resets = snapshots.compactMap { $0.sevenDay?.resetsAt }
+        let weeks = pastWeekEnds(resets: resets, currentStart: .distantFuture).map { end in
+            (end: end, samples: samples(of: snapshots, weekEnd: end))
+        }
+        func percent(_ samples: [Snapshot], at time: TimeInterval) -> Double {
+            samples.last(where: { $0.timestamp <= time })?.sevenDay?.percent ?? 0
+        }
+
+        var days: [RangeDay] = []
+        var dayStart = calendar.startOfDay(for: first)
+        let lastDay = min(calendar.startOfDay(for: last), calendar.startOfDay(for: now))
+        while dayStart <= lastDay {
+            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(day)
+            let used = weeks.reduce(0.0) { total, week in
+                let low = max(dayStart.timeIntervalSince1970, week.end - Self.week)
+                let high = min(dayEnd.timeIntervalSince1970, week.end)
+                return high > low ? total + max(0, percent(week.samples, at: high) - percent(week.samples, at: low)) : total
+            }
+            days.append(RangeDay(start: dayStart, used: used))
+            dayStart = dayEnd
+        }
+        return RangeSummary(days: days)
     }
 
     /// The snapshots that belong to the week ending at `weekEnd`.
