@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 swift build -c release
 BIN=$(swift build -c release --show-bin-path)/ClaudeLimit
+# Keep in step with the release tag (v$VERSION).
+VERSION="${VERSION:-0.1.0}"
 APP=dist/ClaudeLimit.app
 rm -f -r "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -20,7 +22,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleName</key><string>ClaudeLimit</string>
 <key>CFBundleExecutable</key><string>ClaudeLimit</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
+<key>CFBundleVersion</key><string>$VERSION</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 </dict></plist>
