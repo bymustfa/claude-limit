@@ -41,3 +41,12 @@
 "%lldd" = "%lldd";
 "%lldh" = "%lldh";
 "%lldm" = "%lldm";
+
+/* History view */
+"History" = "History";
+"Back to week" = "Back to week";
+"Last 7 days" = "Last 7 days";
+"Last 30 days" = "Last 30 days";
+"Total" = "Total";
+"Per day" = "Per day";
+"Busiest day" = "Busiest day";
