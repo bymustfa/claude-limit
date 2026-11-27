@@ -16,6 +16,11 @@
 "Estimated share: %@" = "Tahmini pay: %@";
 "Share you get if you use nothing more after today" = "Bugünden sonra hiç kullanmazsan düşen pay";
 "Week ≈%@ · resets %@ (%@)" = "Hafta ≈%@ · sıfırlanma %@ (%@)";
+"This week" = "Bu hafta";
+"Previous week" = "Önceki hafta";
+"Next week" = "Sonraki hafta";
+"Week total" = "Hafta toplamı";
+"Week ≈%@ · ended %@" = "Hafta ≈%@ · bitiş %@";
 "Fetching from Claude…" = "Claude'dan veri alınıyor…";
 "Update failed: %@" = "Güncellenemedi: %@";
 "Not updated yet" = "Henüz güncellenmedi";

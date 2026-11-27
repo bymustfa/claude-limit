@@ -16,6 +16,11 @@
 "Estimated share: %@" = "Estimated share: %@";
 "Share you get if you use nothing more after today" = "Share you get if you use nothing more after today";
 "Week ≈%@ · resets %@ (%@)" = "Week ≈%@ · resets %@ (%@)";
+"This week" = "This week";
+"Previous week" = "Previous week";
+"Next week" = "Next week";
+"Week total" = "Week total";
+"Week ≈%@ · ended %@" = "Week ≈%@ · ended %@";
 "Fetching from Claude…" = "Fetching from Claude…";
 "Update failed: %@" = "Update failed: %@";
 "Not updated yet" = "Not updated yet";
